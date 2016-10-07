@@ -26,10 +26,26 @@ module OpenSRS
     def call(data = {})
       xml = xml_processor.build({ :protocol => "XCP" }.merge!(data))
       log('Request', xml, data)
-
+      retry_counter = 0
       begin
         response = http.post(server_path, xml, headers(xml))
         log('Response', response.body, data)
+        if @server.to_s.include?('qa')
+          while [705, 720].include?(response.code) && ret_count < 5
+            sleep 1
+            ret_count += 1
+            response = http.post(server_path, xml, headers(xml))
+            puts response.body
+            log('Response', response.body, data)
+          end
+        end
+      rescue Net::ReadTimeout
+        if retry_counter < 5
+          retry_counter += 1
+          retry
+        else
+          raise
+        end
       rescue Net::HTTPBadResponse
         raise OpenSRS::BadResponse, "Received a bad response from OpenSRS. Please check that your IP address is added to the whitelist, and try again."
       end
